@@ -1,14 +1,16 @@
 import { useState, useEffect } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, useParams, Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase, TABLES, PROJECT_STATUS } from '../lib/supabase'
-import { ArrowLeft, Plus, X, Calendar, Users, FileText } from 'lucide-react'
+import { ArrowLeft, Plus, X, Calendar, Users, FileText, Trash2 } from 'lucide-react'
 import './CreateProject.css'
 
-const CreateProject = () => {
+const EditProject = () => {
+  const { id } = useParams()
   const navigate = useNavigate()
   const { user } = useAuth()
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
   const [users, setUsers] = useState([])
   const [formData, setFormData] = useState({
     name: '',
@@ -19,14 +21,60 @@ const CreateProject = () => {
     progress: 0
   })
   const [teamMembers, setTeamMembers] = useState([])
-  const [phases, setPhases] = useState([
-    { name: '', description: '', order_num: 1, status: 'pending' }
-  ])
+  const [phases, setPhases] = useState([])
   const [error, setError] = useState('')
 
   useEffect(() => {
+    loadProjectData()
     loadUsers()
-  }, [])
+  }, [id])
+
+  const loadProjectData = async () => {
+    try {
+      const [projectRes, membersRes, phasesRes] = await Promise.all([
+        supabase.from(TABLES.PROJECTS).select('*').eq('id', id).single(),
+        supabase.from(TABLES.PROJECT_MEMBERS).select('*').eq('project_id', id).neq('user_id', user.id),
+        supabase.from(TABLES.PROJECT_PHASES).select('*').eq('project_id', id).order('order_num', { ascending: true })
+      ])
+
+      if (projectRes.error) throw projectRes.error
+
+      const project = projectRes.data
+      setFormData({
+        name: project.name,
+        description: project.description,
+        status: project.status,
+        deadline: project.deadline,
+        client_id: project.client_id || '',
+        progress: project.progress
+      })
+
+      setTeamMembers((membersRes.data || []).map(m => ({
+        id: m.id,
+        user_id: m.user_id,
+        role: m.role,
+        isExisting: true
+      })))
+
+      setPhases((phasesRes.data || []).map(p => ({
+        id: p.id,
+        name: p.name,
+        description: p.description || '',
+        order: p.order_num,
+        status: p.status,
+        isExisting: true
+      })))
+
+      if (phasesRes.data?.length === 0) {
+        setPhases([{ name: '', description: '', order: 1, status: 'pending' }])
+      }
+    } catch (error) {
+      console.error('Error loading project:', error)
+      setError('Failed to load project')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const loadUsers = async () => {
     try {
@@ -80,7 +128,6 @@ const CreateProject = () => {
 
   const removePhase = (index) => {
     const updated = phases.filter((_, i) => i !== index)
-    // Reorder remaining phases
     updated.forEach((phase, i) => {
       phase.order = i + 1
     })
@@ -90,68 +137,121 @@ const CreateProject = () => {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
-    setLoading(true)
+    setSaving(true)
 
     try {
-      // Create project
-      const { data: project, error: projectError } = await supabase
+      // Update project
+      const { error: projectError } = await supabase
         .from(TABLES.PROJECTS)
-        .insert([{
-          ...formData,
-          created_by: user.id
-        }])
-        .select()
-        .single()
+        .update(formData)
+        .eq('id', id)
 
       if (projectError) throw projectError
 
-      // Add admin as project member
-      const members = [
-        { 
-          project_id: project.id, 
-          user_id: user.id, 
-          role: 'Admin' 
-        },
-        ...teamMembers
-          .filter(m => m.user_id && m.role)
-          .map(m => ({ ...m, project_id: project.id }))
-      ]
+      // Handle team members
+      const existingMembers = teamMembers.filter(m => m.isExisting && m.id)
+      const newMembers = teamMembers.filter(m => !m.isExisting && m.user_id && m.role)
+      const existingIds = existingMembers.map(m => m.id)
 
-      const { error: membersError } = await supabase
+      // Delete removed members
+      const { error: deleteError } = await supabase
         .from(TABLES.PROJECT_MEMBERS)
-        .insert(members)
+        .delete()
+        .eq('project_id', id)
+        .neq('user_id', user.id)
+        .not('id', 'in', `(${existingIds.join(',') || 'null'})`)
 
-      if (membersError) throw membersError
+      if (deleteError) throw deleteError
 
-      // Add phases
-      if (phases.some(p => p.name)) {
-        const validPhases = phases
-          .filter(p => p.name)
-          .map(p => ({ ...p, project_id: project.id }))
-
-        const { error: phasesError } = await supabase
-          .from(TABLES.PROJECT_PHASES)
-          .insert(validPhases)
-
-        if (phasesError) throw phasesError
+      // Update existing members
+      for (const member of existingMembers) {
+        const { error } = await supabase
+          .from(TABLES.PROJECT_MEMBERS)
+          .update({ role: member.role })
+          .eq('id', member.id)
+        if (error) throw error
       }
 
-      navigate(`/projects/${project.id}`)
+      // Insert new members
+      if (newMembers.length > 0) {
+        const { error } = await supabase
+          .from(TABLES.PROJECT_MEMBERS)
+          .insert(newMembers.map(m => ({
+            project_id: id,
+            user_id: m.user_id,
+            role: m.role
+          })))
+        if (error) throw error
+      }
+
+      // Handle phases
+      const existingPhases = phases.filter(p => p.isExisting && p.id)
+      const newPhases = phases.filter(p => !p.isExisting && p.name)
+      const existingPhaseIds = existingPhases.map(p => p.id)
+
+      // Delete removed phases
+      const { error: deletePhaseError } = await supabase
+        .from(TABLES.PROJECT_PHASES)
+        .delete()
+        .eq('project_id', id)
+        .not('id', 'in', `(${existingPhaseIds.join(',') || 'null'})`)
+
+      if (deletePhaseError) throw deletePhaseError
+
+      // Update existing phases
+      for (const phase of existingPhases) {
+        const { error } = await supabase
+          .from(TABLES.PROJECT_PHASES)
+          .update({
+            name: phase.name,
+            description: phase.description,
+            order_num: phase.order,
+            status: phase.status
+          })
+          .eq('id', phase.id)
+        if (error) throw error
+      }
+
+      // Insert new phases
+      if (newPhases.length > 0) {
+        const { error } = await supabase
+          .from(TABLES.PROJECT_PHASES)
+          .insert(newPhases.map(p => ({
+            project_id: id,
+            name: p.name,
+            description: p.description,
+            order_num: p.order,
+            status: p.status
+          })))
+        if (error) throw error
+      }
+
+      navigate(`/projects/${id}`)
     } catch (error) {
-      console.error('Error creating project:', error)
+      console.error('Error updating project:', error)
       setError(error.message)
-      setLoading(false)
+      setSaving(false)
     }
+  }
+
+  if (loading) {
+    return (
+      <div className="create-project-page">
+        <div className="dashboard-loading">
+          <div className="loading-spinner-large"></div>
+        </div>
+      </div>
+    )
   }
 
   return (
     <div className="create-project-page">
       <div className="page-header">
-        <Link to="/dashboard" className="back-button">
+        <Link to={`/projects/${id}`} className="back-button">
           <ArrowLeft size={20} />
-          Back to Dashboard
+          Back to Project
         </Link>
-        <h1>Create New Project</h1>
+        <h1>Edit Project</h1>
       </div>
 
       <div className="create-project-container">
@@ -162,7 +262,6 @@ const CreateProject = () => {
         )}
 
         <form onSubmit={handleSubmit} className="project-form">
-          {/* Basic Info */}
           <div className="form-section">
             <h2>
               <FileText size={20} />
@@ -179,7 +278,6 @@ const CreateProject = () => {
                   value={formData.name}
                   onChange={handleChange}
                   required
-                  placeholder="Enter project name"
                 />
               </div>
 
@@ -210,7 +308,6 @@ const CreateProject = () => {
                 onChange={handleChange}
                 required
                 rows="4"
-                placeholder="Describe the project goals and requirements"
               />
             </div>
 
@@ -231,25 +328,37 @@ const CreateProject = () => {
               </div>
 
               <div className="form-group">
-                <label htmlFor="client_id">Client</label>
-                <select
-                  id="client_id"
-                  name="client_id"
-                  value={formData.client_id}
+                <label htmlFor="progress">Progress (%)</label>
+                <input
+                  type="number"
+                  id="progress"
+                  name="progress"
+                  value={formData.progress}
                   onChange={handleChange}
-                >
-                  <option value="">Select a client</option>
-                  {users.filter(u => u.role === 'client').map(client => (
-                    <option key={client.id} value={client.id}>
-                      {client.full_name} ({client.email})
-                    </option>
-                  ))}
-                </select>
+                  min="0"
+                  max="100"
+                />
               </div>
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="client_id">Client</label>
+              <select
+                id="client_id"
+                name="client_id"
+                value={formData.client_id}
+                onChange={handleChange}
+              >
+                <option value="">Select a client</option>
+                {users.filter(u => u.role === 'client').map(client => (
+                  <option key={client.id} value={client.id}>
+                    {client.full_name} ({client.email})
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
-          {/* Team Members */}
           <div className="form-section">
             <div className="section-header">
               <h2>
@@ -275,6 +384,7 @@ const CreateProject = () => {
                         value={member.user_id}
                         onChange={(e) => updateTeamMember(index, 'user_id', e.target.value)}
                         required
+                        disabled={member.isExisting}
                       >
                         <option value="">Select user</option>
                         {users.map(user => (
@@ -289,7 +399,7 @@ const CreateProject = () => {
                         type="text"
                         value={member.role}
                         onChange={(e) => updateTeamMember(index, 'role', e.target.value)}
-                        placeholder="Role (e.g., Frontend Developer)"
+                        placeholder="Role"
                         required
                       />
                     </div>
@@ -299,14 +409,13 @@ const CreateProject = () => {
                     onClick={() => removeTeamMember(index)}
                     className="btn-icon btn-danger"
                   >
-                    <X size={18} />
+                    <Trash2 size={18} />
                   </button>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Project Phases */}
           <div className="form-section">
             <div className="section-header">
               <h2>Project Phases</h2>
@@ -341,6 +450,16 @@ const CreateProject = () => {
                         rows="2"
                       />
                     </div>
+                    <div className="form-group">
+                      <select
+                        value={phase.status}
+                        onChange={(e) => updatePhase(index, 'status', e.target.value)}
+                      >
+                        <option value="pending">Pending</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="completed">Completed</option>
+                      </select>
+                    </div>
                   </div>
                   {phases.length > 1 && (
                     <button
@@ -348,7 +467,7 @@ const CreateProject = () => {
                       onClick={() => removePhase(index)}
                       className="btn-icon btn-danger"
                     >
-                      <X size={18} />
+                      <Trash2 size={18} />
                     </button>
                   )}
                 </div>
@@ -357,15 +476,15 @@ const CreateProject = () => {
           </div>
 
           <div className="form-actions">
-            <Link to="/dashboard" className="btn btn-outline">
+            <Link to={`/projects/${id}`} className="btn btn-outline">
               Cancel
             </Link>
             <button 
               type="submit" 
               className="btn btn-primary"
-              disabled={loading}
+              disabled={saving}
             >
-              {loading ? 'Creating...' : 'Create Project'}
+              {saving ? 'Saving...' : 'Save Changes'}
             </button>
           </div>
         </form>
@@ -374,4 +493,4 @@ const CreateProject = () => {
   )
 }
 
-export default CreateProject
+export default EditProject

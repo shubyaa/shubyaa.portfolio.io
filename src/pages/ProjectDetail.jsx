@@ -4,13 +4,13 @@ import { useAuth } from '../contexts/AuthContext'
 import { supabase, TABLES } from '../lib/supabase'
 import { 
   ArrowLeft, Users, MessageSquare, FileText, MapPin, 
-  Calendar, Send, Paperclip, Download, CheckCircle2
+  Calendar, Send, Paperclip, Download, CheckCircle2, Edit
 } from 'lucide-react'
 import './ProjectDetail.css'
 
 const ProjectDetail = () => {
   const { id } = useParams()
-  const { user, profile } = useAuth()
+  const { user, profile, isAdmin } = useAuth()
   const [project, setProject] = useState(null)
   const [members, setMembers] = useState([])
   const [phases, setPhases] = useState([])
@@ -95,7 +95,7 @@ const ProjectDetail = () => {
       .from(TABLES.PROJECT_PHASES)
       .select('*')
       .eq('project_id', id)
-      .order('order', { ascending: true })
+      .order('order_num', { ascending: true })
 
     if (error) throw error
     setPhases(data || [])
@@ -198,8 +198,18 @@ const ProjectDetail = () => {
         </Link>
 
         <div className="project-title-section">
-          <h1>{project.name}</h1>
-          <p className="project-description">{project.description}</p>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+            <div>
+              <h1>{project.name}</h1>
+              <p className="project-description">{project.description}</p>
+            </div>
+            {isAdmin() && (
+              <Link to={`/projects/${id}/edit`} className="btn btn-secondary" style={{ marginLeft: '1rem' }}>
+                <Edit size={18} />
+                Edit Project
+              </Link>
+            )}
+          </div>
         </div>
 
         <div className="project-meta-bar">
@@ -346,16 +356,18 @@ const ProjectDetail = () => {
                   </div>
                   <div className="timeline-content">
                     <div className="phase-header">
-                      <h3>Phase {phase.order}: {phase.name}</h3>
-                      <select
-                        value={phase.status}
-                        onChange={(e) => updatePhaseStatus(phase.id, e.target.value)}
-                        className="phase-status-select"
-                      >
-                        <option value="pending">Pending</option>
-                        <option value="in_progress">In Progress</option>
-                        <option value="completed">Completed</option>
-                      </select>
+                      <h3>Phase {phase.order_num}: {phase.name}</h3>
+                      {isAdmin() && (
+                        <select
+                          value={phase.status}
+                          onChange={(e) => updatePhaseStatus(phase.id, e.target.value)}
+                          className="phase-status-select"
+                        >
+                          <option value="pending">Pending</option>
+                          <option value="in_progress">In Progress</option>
+                          <option value="completed">Completed</option>
+                        </select>
+                      )}
                     </div>
                     <p>{phase.description}</p>
                   </div>

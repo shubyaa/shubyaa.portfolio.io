@@ -8,6 +8,7 @@ import Signup from './pages/Signup'
 import Dashboard from './pages/Dashboard'
 import ProjectDetail from './pages/ProjectDetail'
 import CreateProject from './pages/CreateProject'
+import EditProject from './pages/EditProject'
 
 // Protected Route Component
 const ProtectedRoute = ({ children, adminOnly = false }) => {
@@ -115,6 +116,15 @@ function App() {
             element={
               <ProtectedRoute adminOnly>
                 <CreateProject />
+              </ProtectedRoute>
+            } 
+          />
+
+          <Route 
+            path="/projects/:id/edit" 
+            element={
+              <ProtectedRoute adminOnly>
+                <EditProject />
               </ProtectedRoute>
             } 
           />
