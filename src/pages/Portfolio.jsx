@@ -10,6 +10,49 @@ const Portfolio = () => {
   const [isScrolled, setIsScrolled] = useState(false)
   const [projects, setProjects] = useState([])
   const [loading, setLoading] = useState(true)
+  // Add to Portfolio.jsx state
+  const [contactForm, setContactForm] = useState({
+    name: '',
+    email: '',
+    project_type: '',
+    message: ''
+  })
+  const [contactLoading, setContactLoading] = useState(false)
+  const [contactStatus, setContactStatus] = useState({ type: '', message: '' })
+
+  const handleContactSubmit = async (e) => {
+    e.preventDefault()
+    setContactLoading(true)
+    setContactStatus({ type: '', message: '' })
+
+    try {
+      const { error } = await supabase
+        .from('contact_submissions')
+        .insert([contactForm])
+
+      if (error) throw error
+
+      setContactStatus({
+        type: 'success',
+        message: 'Thank you! I\'ll get back to you soon.'
+      })
+      setContactForm({ name: '', email: '', project_type: '', message: '' })
+    } catch (error) {
+      setContactStatus({
+        type: 'error',
+        message: 'Failed to send message. Please try again.'
+      })
+    } finally {
+      setContactLoading(false)
+    }
+  }
+
+  const handleContactChange = (e) => {
+    setContactForm({
+      ...contactForm,
+      [e.target.name]: e.target.value
+    })
+  }
 
   useEffect(() => {
     const handleScroll = () => {
@@ -424,18 +467,42 @@ const Portfolio = () => {
               </div>
             </div>
 
-            <form className="contact-form">
+            <form className="contact-form" onSubmit={handleContactSubmit}>
+              {contactStatus.message && (
+                <div className={`alert alert-${contactStatus.type}`}>
+                  {contactStatus.message}
+                </div>
+              )}
               <div className="form-group">
                 <label htmlFor="name">Name *</label>
-                <input type="text" id="name" name="name" required />
+                <input
+                  type="text"
+                  id="name"
+                  name="name"
+                  value={contactForm.name}
+                  onChange={handleContactChange}
+                  required
+                />
               </div>
               <div className="form-group">
                 <label htmlFor="email">Email *</label>
-                <input type="email" id="email" name="email" required />
+                <input
+                  type="email"
+                  id="email"
+                  name="email"
+                  value={contactForm.email}
+                  onChange={handleContactChange}
+                  required
+                />
               </div>
               <div className="form-group">
-                <label htmlFor="project">Project Type</label>
-                <select id="project" name="project">
+                <label htmlFor="project_type">Project Type</label>
+                <select
+                  id="project_type"
+                  name="project_type"
+                  value={contactForm.project_type}
+                  onChange={handleContactChange}
+                >
                   <option value="">Select project type</option>
                   <option value="web-app">Web Application</option>
                   <option value="mobile-app">Mobile Application</option>
@@ -450,11 +517,15 @@ const Portfolio = () => {
                   id="message"
                   name="message"
                   rows="5"
+                  value={contactForm.message}
+                  onChange={handleContactChange}
                   required
                   placeholder="Tell me about your project requirements, timeline, and goals..."
                 />
               </div>
-              <button type="submit" className="btn btn-primary">Send Message</button>
+              <button type="submit" className="btn btn-primary" disabled={contactLoading}>
+                {contactLoading ? 'Sending...' : 'Send Message'}
+              </button>
             </form>
           </div>
         </div>
