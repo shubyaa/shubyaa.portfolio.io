@@ -385,6 +385,7 @@
 
 .project-card p {
   color: var(--text-secondary);
+  flex: 1 !important;
   margin-bottom: 1.25rem;
   line-height: 1.5;
   font-size: 0.9375rem;

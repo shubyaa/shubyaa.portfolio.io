@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, Navigate, BrowserRouter } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 
 // Pages
@@ -69,70 +69,70 @@ const PublicRoute = ({ children }) => {
 function App() {
   return (
     <Router>
-      <AuthProvider>
-        <Routes>
-          {/* Public Routes */}
-          <Route path="/" element={<Portfolio />} />
-          
-          <Route 
-            path="/login" 
-            element={
-              <PublicRoute>
-                <Login />
-              </PublicRoute>
-            } 
-          />
-          
-          <Route 
-            path="/signup" 
-            element={
-              <PublicRoute>
-                <Signup />
-              </PublicRoute>
-            } 
-          />
+          <AuthProvider>
+          <Routes>
+            {/* Public Routes */}
+            <Route path="/" element={<Portfolio />} />
+            
+            <Route 
+              path="/login" 
+              element={
+                <PublicRoute>
+                  <Login />
+                </PublicRoute>
+              } 
+            />
+            
+            <Route 
+              path="/signup" 
+              element={
+                <PublicRoute>
+                  <Signup />
+                </PublicRoute>
+              } 
+            />
 
-          {/* Protected Routes */}
-          <Route 
-            path="/dashboard" 
-            element={
-              <ProtectedRoute>
-                <Dashboard />
-              </ProtectedRoute>
-            } 
-          />
+            {/* Protected Routes */}
+            <Route 
+              path="/dashboard" 
+              element={
+                <ProtectedRoute>
+                  <Dashboard />
+                </ProtectedRoute>
+              } 
+            />
 
-          <Route 
-            path="/projects/:id" 
-            element={
-              <ProtectedRoute>
-                <ProjectDetail />
-              </ProtectedRoute>
-            } 
-          />
+            <Route 
+              path="/projects/:id" 
+              element={
+                <ProtectedRoute>
+                  <ProjectDetail />
+                </ProtectedRoute>
+              } 
+            />
 
-          <Route 
-            path="/projects/create" 
-            element={
-              <ProtectedRoute adminOnly>
-                <CreateProject />
-              </ProtectedRoute>
-            } 
-          />
+            <Route 
+              path="/projects/create" 
+              element={
+                <ProtectedRoute adminOnly>
+                  <CreateProject />
+                </ProtectedRoute>
+              } 
+            />
 
-          <Route 
-            path="/projects/:id/edit" 
-            element={
-              <ProtectedRoute adminOnly>
-                <EditProject />
-              </ProtectedRoute>
-            } 
-          />
+            <Route 
+              path="/projects/:id/edit" 
+              element={
+                <ProtectedRoute adminOnly>
+                  <EditProject />
+                </ProtectedRoute>
+              } 
+            />
 
-          {/* Catch all */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </AuthProvider>
+            {/* Catch all */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </AuthProvider>    
     </Router>
   )
 }
